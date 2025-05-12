@@ -1,6 +1,6 @@
 package gofirst
 
-import "hello/hello"
+import "github.com/meng-qiang-vip/gofirst/hello"
 
 func main() {
 
