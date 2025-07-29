@@ -1,55 +1,53 @@
 name: 编译并部署到测试服务器
 
-# 触发条件：只有main分支有push操作时才执行
 on:
   push:
     branches: [ "main" ]
 
 jobs:
   build-and-deploy:
-    # 在Ubuntu系统上运行
     runs-on: ubuntu-latest
     
     steps:
-      # 步骤1：拉取代码到工作流环境
       - name: 拉取代码
         uses: actions/checkout@v4
 
-      # 步骤2：配置Go环境
       - name: 设置Go环境
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'  # 指定Go版本
-          cache: true         # 缓存依赖，加速构建
+          go-version: '1.22'
+          cache: true
 
-      # 步骤3：编译Go程序
       - name: 编译程序
         run: |
-          # 编译为Linux可执行文件（假设测试服务器是Linux系统）
           GOOS=linux GOARCH=amd64 go build -o myapp main.go
-          # 检查编译结果
-          ls -l myapp
+          ls -l myapp  # 确认编译成功
 
-      # 步骤4：部署到测试服务器
       - name: 部署到测试服务器
-        uses: appleboy/ssh-action@master
+        uses: appleboy/ssh-action@v1.0.3  # 使用固定版本，避免兼容性问题
         with:
-          host: ${{ secrets.TEST_SERVER_HOST }}     # 测试服务器IP/域名
-          username: ${{ secrets.TEST_SERVER_USER }} # 服务器登录用户名
-          key: ${{ secrets.TEST_SERVER_SSH_KEY }}   # SSH私钥
-          port: ${{ secrets.TEST_SERVER_PORT || 22 }} # 服务器SSH端口，默认22
+          host: ${{ secrets.TEST_SERVER_HOST }}
+          username: ${{ secrets.TEST_SERVER_USER }}
+          key: ${{ secrets.TEST_SERVER_SSH_KEY }}
+          port: ${{ secrets.TEST_SERVER_PORT || 22 }}
+          # 使用scp命令传输文件（替代原来的source/target）
           script: |
-            # 进入服务器上的应用目录（根据实际情况修改）
-            cd /home/testapp
+            # 确保服务器目标目录存在
+            mkdir -p /home/testapp
             
-            # 停止当前运行的程序（如果需要）
+            # 停止当前运行的程序
             pkill myapp || true
             
-            # 备份旧版本（可选）
-            mv myapp myapp_old || true
+            # 备份旧版本
+            mv /home/testapp/myapp /home/testapp/myapp_old || true
             
-            # 从工作流环境复制新编译的程序到服务器
-            echo "正在部署新版本..."
-          # 传输编译好的文件到服务器
-          source: myapp
-          target: /home/testapp  # 服务器上的目标目录
+            # 从工作流环境复制文件到服务器（使用here-document语法）
+            cat > /home/testapp/myapp << 'EOF'
+            ${{ github.workspace }}/myapp
+            EOF
+            
+            # 赋予执行权限
+            chmod +x /home/testapp/myapp
+            
+            # 启动程序（根据需要添加）
+            nohup /home/testapp/myapp &
