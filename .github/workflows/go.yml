@@ -26,9 +26,9 @@ jobs:
       - name: 部署到测试服务器
         uses: appleboy/ssh-action@v1.0.3  # 使用固定版本，避免兼容性问题
         with:
-          host: ${{ secrets.TEST_SERVER_HOST || 101.200.230.240 }}
-          username: ${{ secrets.TEST_SERVER_USER || "root"}}
-          key: ${{ secrets.TEST_SERVER_SSH_KEY || ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDI+7hNTNn5xAb31N0edrqI10J219Wk7PMkq5rUhE2oHxhoiN5cDOQyMTRTMCqOIl+nBVqOtLuDMP/lU5ZRK7vRdzr1UsWdtYMRf7CDC7KHdABNn+BYN9LqIsGeHwxAjr7XCgh871YbEa/efcB5S36cl517Lz8yxcqMba/AhGKIZWFPSTEAN1kfcTSKRs+sZR98flVz6+FwhENlW7BO8qIYEaIv4q2GIUAmJxen8Zgd5WSmMQgqpuvztvukxrjWougAHU0oPzLhc7c6q0caiM0eqO+3/qsqmH7f7oR0OjrEoOqSqut0GFTj5tiLVU1+8BU61v+/APbwlmveYlTySq1p root@iZ2ze1zykik3obzetjrye4Z }}
+          host: ${{ secrets.TEST_SERVER_HOST }}
+          username: ${{ secrets.TEST_SERVER_USER }}
+          key: ${{ secrets.TEST_SERVER_SSH_KEY }}
           port: ${{ secrets.TEST_SERVER_PORT || 22 }}
           # 使用scp命令传输文件（替代原来的source/target）
           script: |
