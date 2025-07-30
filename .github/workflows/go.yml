@@ -1,4 +1,4 @@
-name: 最终修复myapp文件不存在问题
+name: 全链路追踪myapp文件状态
 
 on:
   push:
@@ -10,77 +10,51 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 1. 彻底检查代码仓库结构
+      - name: 检查源代码
         run: |
-          echo "当前工作目录: $(pwd)"
-          echo "仓库所有文件列表:"
-          find . -type f  # 列出仓库中所有文件
-          
-          # 检查main.go是否存在（关键）
-          if [ ! -f "main.go" ]; then
-            echo "❌ 错误：未找到main.go文件"
-            echo "请确认："
-            echo "1. main.go已提交到main分支"
-            echo "2. main.go在仓库根目录（非子文件夹）"
-            exit 1
-          else
-            echo "✅ 找到main.go文件"
-            # 显示main.go前10行，确认是有效代码
-            echo "main.go前10行内容:"
-            head -n 10 main.go
-          fi
+          echo "=== 源代码检查 ==="
+          ls -l main.go || echo "main.go不存在"
 
-      - name: 2. 安装Go并验证环境
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.22'
-          cache: false
-
-      - name: 3. 验证Go环境
+      - name: 编译并记录文件状态
         run: |
-          echo "Go版本: $(go version)"
-          echo "Go环境变量: $(go env)"
-          echo "GOPATH: $(go env GOPATH)"
-          echo "GOROOT: $(go env GOROOT)"
-
-      - name: 4. 编译程序（带详细日志）
-        run: |
-          echo "开始编译myapp..."
-          # 强制重新编译，输出详细日志
-          GOOS=linux GOARCH=amd64 go build -x -v -o myapp  2>&1 | tee build.log
+          echo "=== 编译前状态 ==="
+          ls -l myapp || echo "myapp初始不存在"
           
-          # 检查编译是否成功
-          if [ $? -ne 0 ]; then
-            echo "❌ 编译失败，详细日志:"
-            cat build.log
-            exit 1
-          fi
+          # 编译
+          GOOS=linux GOARCH=amd64 go build -o myapp 
           
-          # 检查文件是否生成
+          echo "=== 编译后状态 ==="
+          # 检查存在性
           if [ ! -f "myapp" ]; then
-            echo "❌ 编译后未生成myapp文件"
-            echo "当前目录文件:"
-            ls -la
+            echo "编译失败：myapp未生成"
             exit 1
-          else
-            echo "✅ 编译成功，myapp文件信息:"
-            ls -l myapp
-            file myapp  # 确认是可执行文件
           fi
+          # 检查权限
+          ls -l myapp  # 应显示-rwxr-xr-x
+          # 检查文件类型
+          file myapp    # 应显示ELF可执行文件
+          # 记录绝对路径
+          echo "myapp绝对路径: $(readlink -f myapp)"
+          # 计算文件哈希（用于验证完整性）
+          sha256sum myapp > myapp.sha256
+          cat myapp.sha256
 
-      - name: 5. 确认文件路径
+      - name: 传输前再次确认
         run: |
-          echo "工作区路径: ${{ github.workspace }}"
-          echo "myapp绝对路径: ${{ github.workspace }}/myapp"
-          # 验证文件可访问
-          if [ -f "${{ github.workspace }}/myapp" ]; then
-            echo "✅ 工作区中存在myapp文件"
-          else
-            echo "❌ 工作区中不存在myapp文件"
+          echo "=== 传输前检查 ==="
+          # 再次验证文件存在
+          if [ ! -f "myapp" ]; then
+            echo "错误：传输前myapp消失"
             exit 1
           fi
+          # 验证哈希（确保文件未被篡改）
+          sha256sum -c myapp.sha256 || echo "文件已被修改"
+          # 输出工作区绝对路径
+          echo "工作区绝对路径: $(readlink -f ${{ github.workspace }})"
+          # 确认工作区中存在文件
+          ls -l ${{ github.workspace }}/myapp
 
-      - name: 6. 部署到服务器
+      - name: 部署到服务器
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.TEST_SERVER_HOST }}
@@ -90,35 +64,25 @@ jobs:
           script: |
             TARGET_DIR="/home/testapp"
             mkdir -p $TARGET_DIR
-            echo "服务器目标目录: $TARGET_DIR"
             
             # 传输文件
             echo "${{ secrets.TEST_SERVER_SSH_KEY }}" > /tmp/deploy_key
             chmod 600 /tmp/deploy_key
             
-       
-
-            # 从工作流环境复制文件到服务器（使用here-document语法）
-            cat > /home/testapp/myapp << 'EOF'
-            ${{ github.workspace }}/myapp
-            EOF
-              
+            echo "=== 开始传输 ==="
+            # 传输时显示详细日志
+            scp -v -o StrictHostKeyChecking=no -i /tmp/deploy_key \
+              ${{ github.workspace }}/myapp \
+              $TARGET_DIR/myapp
             
-            # 检查传输结果
+            # 传输后验证
+            echo "=== 服务器端验证 ==="
             if [ ! -f "$TARGET_DIR/myapp" ]; then
-              echo "❌ 服务器上未找到myapp文件"
+              echo "错误：服务器上myapp不存在"
               exit 1
             fi
-            
-            # 启动服务
-            chmod +x $TARGET_DIR/myapp
-            nohup $TARGET_DIR/myapp > $TARGET_DIR/app.log 2>&1 &
-            sleep 2
-            
-            if pgrep -f "$TARGET_DIR/myapp"; then
-              echo "✅ 部署成功"
-            else
-              echo "❌ 启动失败，日志:"
-              cat $TARGET_DIR/app.log
-              exit 1
-            fi
+            # 检查文件类型和权限
+            ls -l $TARGET_DIR/myapp
+            file $TARGET_DIR/myapp
+            # 尝试执行（直接显示错误）
+            $TARGET_DIR/myapp || echo "执行失败，继续排查"
