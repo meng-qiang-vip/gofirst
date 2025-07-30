@@ -16,7 +16,10 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.22'
-          cache: true
+           # 修复：如果项目没有go.sum，关闭缓存或指定自定义缓存键
+          cache: ${{ hashFiles('**/go.sum') != '' }}  # 只有存在go.sum时才启用缓存
+          # 或者完全关闭缓存（适合简单项目）
+          # cache: false
 
       - name: 编译程序
         run: |
