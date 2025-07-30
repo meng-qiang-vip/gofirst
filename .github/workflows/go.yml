@@ -39,8 +39,6 @@ jobs:
             pkill myapp || true
             # 备份旧版本
             mv /home/testapp/myapp /home/testapp/myapp_old || true
-            # 赋予执行权限
-            chmod +x /home/testapp/myapp
             # 启动程序（根据需要添加）
             nohup /home/testapp/myapp &
           # 同步文件：工作流中的myapp → 服务器目标目录
