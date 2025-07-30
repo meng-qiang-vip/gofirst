@@ -28,20 +28,43 @@ jobs:
         with:
           host: ${{ secrets.TEST_SERVER_HOST }}
           username: ${{ secrets.TEST_SERVER_USER }}
-          key: ${{ secrets.TEST_SERVER_SSH_KEY }}  # 或使用 key: ${{ secrets.TEST_SERVER_SSH_KEY }}
+          key: ${{ secrets.TEST_SERVER_SSH_KEY }}
           port: ${{ secrets.TEST_SERVER_PORT || 22 }}
-          # 使用scp直接传输文件（最可靠的方式）
           script: |
-            # 服务器目标目录（确保存在）
-            TARGET_DIR="/home/testapp"
-            mkdir -p $TARGET_DIR
-            # 停止当前运行的程序
-            pkill myapp || true
-            # 备份旧版本
-            mv /home/testapp/myapp /home/testapp/myapp_old || true
-            # 启动程序（根据需要添加）
-            nohup /home/testapp/myapp &
-          # 同步文件：工作流中的myapp → 服务器目标目录
-          sync: true
-          sync_source: "myapp"  # 本地编译好的文件（相对路径）
-          sync_target: "/home/testapp"  # 服务器目标路径
+            # 步骤1：停止旧服务
+            echo "停止旧服务..."
+            pkill -f "/home/testapp/myapp" || echo "旧服务未运行"
+            sleep 1
+
+            # 步骤2：确保目标目录存在（关键）
+            echo "检查目标目录..."
+            mkdir -p /home/testapp  # 若目录不存在则创建
+            chmod 755 /home/testapp  # 确保有写入权限
+
+            # 步骤3：scp传输文件到/home/testapp目录
+            echo "传输新文件到/home/testapp..."
+            scp -P ${{ secrets.TEST_SERVER_PORT || 22 }} \
+              runner@${{ github.server_url_host }}:${{ github.workspace }}/myapp \
+              /home/testapp/myapp_new  # 明确指定目标目录
+
+            # 检查传输结果
+            if [ ! -f "/home/testapp/myapp_new" ]; then
+              echo "错误：文件未传输到/home/testapp"
+              exit 1
+            fi
+
+            # 步骤4：替换文件并启动新服务
+            echo "启动新服务..."
+            mv /home/testapp/myapp_new /home/testapp/myapp
+            chmod +x /home/testapp/myapp
+            nohup /home/testapp/myapp > /home/testapp/app.log 2>&1 &
+
+            # 验证启动
+            sleep 2
+            if pgrep -f "/home/testapp/myapp" > /dev/null; then
+              echo "新服务在/home/testapp启动成功"
+            else
+              echo "启动失败，日志："
+              cat /home/testapp/app.log
+              exit 1
+            fi
