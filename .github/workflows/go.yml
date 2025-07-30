@@ -72,7 +72,7 @@ jobs:
             echo "=== 开始传输 ==="
             # 传输时显示详细日志
             scp -v -o StrictHostKeyChecking=no -i /tmp/deploy_key \
-              ${{ github.workspace }}/myapp \
+              /home/runner/work/gofirst/myapp \
               $TARGET_DIR/myapp
             
             # 传输后验证
