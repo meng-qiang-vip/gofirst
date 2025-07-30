@@ -1,32 +1,36 @@
-name: 编译并部署到测试服务器
+name: 修正工作区路径的部署脚本
 
 on:
   push:
     branches: [ "main" ]
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
-    
     steps:
-      - name: 拉取代码
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: 显示工作区路径（调试用）
+        run: |
+          echo "当前工作区路径: ${{ github.workspace }}"
+          # 输出路径结构，确认文件存放位置
+          ls -la
 
       - name: 设置Go环境
         uses: actions/setup-go@v5
         with:
           go-version: '1.22'
-           # 修复：如果项目没有go.sum，关闭缓存或指定自定义缓存键
-          cache: ${{ hashFiles('**/go.sum') != '' }}  # 只有存在go.sum时才启用缓存
-          # 或者完全关闭缓存（适合简单项目）
-          # cache: false
+          cache: false
 
       - name: 编译程序
         run: |
-          GOOS=linux GOARCH=amd64 go build -o myapp 
-          ls -l myapp  # 确认编译成功
+          GOOS=linux GOARCH=amd64 go build -o myapp main.go
+          chmod +x myapp
+          # 确认编译文件在工作区内
+          echo "编译文件位置: $(pwd)/myapp"
+          ls -l myapp
 
-      - name: 部署到测试服务器
+      - name: 部署到服务器
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.TEST_SERVER_HOST }}
@@ -34,25 +38,32 @@ jobs:
           key: ${{ secrets.TEST_SERVER_SSH_KEY }}
           port: ${{ secrets.TEST_SERVER_PORT || 22 }}
           script: |
-            # 定义路径
             TARGET_DIR="/home/testapp"
             mkdir -p $TARGET_DIR
             
-            # 关键修复：将私钥写入临时文件，供scp使用
+            pkill -f "$TARGET_DIR/myapp" || true
+            sleep 1
+            
+            # 准备私钥
             echo "${{ secrets.TEST_SERVER_SSH_KEY }}" > /tmp/deploy_key
-            chmod 600 /tmp/deploy_key  # 私钥必须设置600权限
+            chmod 600 /tmp/deploy_key
             
-            # 传输新文件
-            scp -o StrictHostKeyChecking=no \
-               -i /tmp/deploy_key \  # 显式使用私钥
+            # 使用正确的工作区路径（通过${{ github.workspace }}变量自动获取）
+            scp -o StrictHostKeyChecking=no -i /tmp/deploy_key -P ${{ secrets.TEST_SERVER_PORT || 22 }} \
               ${{ github.workspace }}/myapp \
-              ${{ secrets.TEST_SERVER_USER }}@${{ secrets.TEST_SERVER_HOST }}:$TARGET_DIR
+              ${{ secrets.TEST_SERVER_USER }}@${{ secrets.TEST_SERVER_HOST }}:$TARGET_DIR/myapp
             
-            # 启动新服务
+            rm -f /tmp/deploy_key
+            
+            # 验证文件传输
+            if [ ! -f "$TARGET_DIR/myapp" ]; then
+              echo "错误：文件未传输到服务器"
+              exit 1
+            fi
+            
             chmod +x $TARGET_DIR/myapp
             nohup $TARGET_DIR/myapp > $TARGET_DIR/app.log 2>&1 &
             
-            # 验证启动
             sleep 2
             if pgrep -f "$TARGET_DIR/myapp"; then
               echo "部署成功"
