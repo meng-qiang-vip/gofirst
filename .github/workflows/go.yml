@@ -71,9 +71,7 @@ jobs:
             
             echo "=== 开始传输 ==="
             # 传输时显示详细日志
-            cat > /home/testapp/myapp << 'EOF'
-            /home/runner/work/gofirst/myapp
-            EOF  
+            scp -v  -i /tmp/deploy_key myapp $TEST_SERVER_USER@$TEST_SERVER_HOST:$TARGET_DIR 
             
             # 传输后验证
             echo "=== 服务器端验证 ==="
