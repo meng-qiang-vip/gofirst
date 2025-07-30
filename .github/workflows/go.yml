@@ -20,7 +20,7 @@ jobs:
 
       - name: 编译程序
         run: |
-          GOOS=linux GOARCH=amd64 go build -o myapp main.go
+          GOOS=linux GOARCH=amd64 go build -o myapp 
           ls -l myapp  # 确认编译成功
 
       - name: 部署到测试服务器
