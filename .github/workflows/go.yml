@@ -1,4 +1,4 @@
-name: 使用scp-action部署应用
+name: 解决GLIBC版本不兼容问题
 
 on:
   push:
@@ -16,16 +16,22 @@ jobs:
           go-version: '1.22'
           cache: false
 
-      - name: 编译Go应用
+      - name: 编译Go应用（兼容旧版GLIBC）
         run: |
-          GOOS=linux GOARCH=amd64 go build -o myapp main.go
+          # 关键：添加编译参数，降低GLIBC依赖版本
+          GOOS=linux GOARCH=amd64 \
+          CGO_CFLAGS="-D_GLIBCXX_USE_CXX11_ABI=0" \
+          go build -ldflags="-s -w -linkmode external -extldflags '-static'" \
+          -o myapp main.go
+          
           chmod +x myapp
           # 验证编译结果
           if [ ! -f "myapp" ]; then
             echo "编译失败：未生成myapp文件"
             exit 1
           fi
-          ls -l myapp
+          # 查看编译后的二进制文件依赖的GLIBC版本
+          objdump -T myapp | grep GLIBC_ | sort -u
 
       - name: 停止服务器上的旧服务
         uses: appleboy/ssh-action@v1.0.3
@@ -37,26 +43,21 @@ jobs:
           script: |
             TARGET_DIR="/home/testapp"
             mkdir -p $TARGET_DIR
-            # 停止旧服务
             pkill -f "$TARGET_DIR/myapp" || true
             sleep 1
 
-      - name: 使用scp-action传输文件到服务器
+      - name: 传输文件到服务器
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.TEST_SERVER_HOST }}
           username: ${{ secrets.TEST_SERVER_USER }}
           key: ${{ secrets.TEST_SERVER_SSH_KEY }}
           port: ${{ secrets.TEST_SERVER_PORT || 22 }}
-          # 本地文件路径（编译好的myapp）
           source: "myapp"
-          # 服务器目标路径（确保目录存在）
           target: "/home/testapp"
-          # 传输后设置文件权限（可选）
-          strip_components: 0  # 保持文件名不变
-          rm: true  # 传输前删除服务器上的旧文件
+          rm: true
 
-      - name: 启动服务器上的新服务
+      - name: 启动新服务并验证
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.TEST_SERVER_HOST }}
@@ -65,12 +66,16 @@ jobs:
           port: ${{ secrets.TEST_SERVER_PORT || 22 }}
           script: |
             TARGET_DIR="/home/testapp"
-            # 确保文件可执行
             chmod +x $TARGET_DIR/myapp
-            # 启动服务并记录日志
+            
+            # 检查服务器GLIBC版本
+            echo "服务器GLIBC版本："
+            ldd --version | head -n 1
+            
+            # 尝试启动并捕获错误
             nohup $TARGET_DIR/myapp > $TARGET_DIR/app.log 2>&1 &
-            # 验证启动结果
             sleep 2
+            
             if pgrep -f "$TARGET_DIR/myapp"; then
               echo "新服务启动成功"
             else
