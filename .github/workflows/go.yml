@@ -1,4 +1,4 @@
-name: 修正工作区路径的部署脚本
+name: 解决myapp文件不存在问题
 
 on:
   push:
@@ -10,11 +10,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 显示工作区路径（调试用）
+      - name: 检查代码结构（关键调试）
         run: |
-          echo "当前工作区路径: ${{ github.workspace }}"
-          # 输出路径结构，确认文件存放位置
+          echo "当前目录文件:"
           ls -la
+          # 确认main.go存在（编译的源文件）
+          if [ ! -f "main.go" ]; then
+            echo "错误：未找到main.go文件，请检查代码仓库"
+            exit 1
+          fi
+          echo "main.go存在，继续编译"
 
       - name: 设置Go环境
         uses: actions/setup-go@v5
@@ -22,13 +27,31 @@ jobs:
           go-version: '1.22'
           cache: false
 
-      - name: 编译程序
+      - name: 编译程序并强制验证
         run: |
-          GOOS=linux GOARCH=amd64 go build -o myapp main.go
-          chmod +x myapp
-          # 确认编译文件在工作区内
-          echo "编译文件位置: $(pwd)/myapp"
+          # 显示Go版本，确认环境正常
+          go version
+          
+          # 清理可能的旧文件
+          rm -f myapp
+          
+          # 执行编译并显示详细输出
+          echo "开始编译..."
+          GOOS=linux GOARCH=amd64 go build -v -o myapp  || {
+            echo "编译失败！查看上面的错误信息"
+            exit 1
+          }
+          
+          # 双重验证文件存在
+          if [ ! -f "myapp" ]; then
+            echo "致命错误：编译后仍未生成myapp文件"
+            exit 1
+          fi
+          
+          # 显示文件详情，确认是可执行文件
+          echo "编译成功，文件信息："
           ls -l myapp
+          file myapp  # 应显示"ELF 64-bit LSB executable"
 
       - name: 部署到服务器
         uses: appleboy/ssh-action@v1.0.3
@@ -44,18 +67,16 @@ jobs:
             pkill -f "$TARGET_DIR/myapp" || true
             sleep 1
             
-            # 准备私钥
             echo "${{ secrets.TEST_SERVER_SSH_KEY }}" > /tmp/deploy_key
             chmod 600 /tmp/deploy_key
             
-            # 使用正确的工作区路径（通过${{ github.workspace }}变量自动获取）
+            # 使用工作流环境的绝对路径传输
             scp -o StrictHostKeyChecking=no -i /tmp/deploy_key -P ${{ secrets.TEST_SERVER_PORT || 22 }} \
               ${{ github.workspace }}/myapp \
               ${{ secrets.TEST_SERVER_USER }}@${{ secrets.TEST_SERVER_HOST }}:$TARGET_DIR/myapp
             
             rm -f /tmp/deploy_key
             
-            # 验证文件传输
             if [ ! -f "$TARGET_DIR/myapp" ]; then
               echo "错误：文件未传输到服务器"
               exit 1
