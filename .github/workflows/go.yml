@@ -33,7 +33,7 @@ jobs:
           # 使用scp直接传输文件（最可靠的方式）
           script: |
             # 服务器目标目录（确保存在）
-            TARGET_DIR="/home/testapp/myapp"
+            TARGET_DIR="/home/testapp"
             mkdir -p $TARGET_DIR
             # 停止当前运行的程序
             pkill myapp || true
@@ -46,4 +46,4 @@ jobs:
           # 同步文件：工作流中的myapp → 服务器目标目录
           sync: true
           sync_source: "myapp"  # 本地编译好的文件（相对路径）
-          sync_target: "/home/testapp/myapp"  # 服务器目标路径
+          sync_target: "/home/testapp"  # 服务器目标路径
