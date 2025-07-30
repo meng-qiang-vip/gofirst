@@ -96,10 +96,13 @@ jobs:
             echo "${{ secrets.TEST_SERVER_SSH_KEY }}" > /tmp/deploy_key
             chmod 600 /tmp/deploy_key
             
-            # 使用绝对路径传输
-            scp -o StrictHostKeyChecking=no -i /tmp/deploy_key -P ${{ secrets.TEST_SERVER_PORT || 22 }} \
-              ${{ github.workspace }}/myapp \
-              $TARGET_DIR/myapp
+       
+
+            # 从工作流环境复制文件到服务器（使用here-document语法）
+            cat > /home/testapp/myapp << 'EOF'
+            ${{ github.workspace }}/myapp
+            EOF
+              
             
             # 检查传输结果
             if [ ! -f "$TARGET_DIR/myapp" ]; then
