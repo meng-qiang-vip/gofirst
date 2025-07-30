@@ -33,7 +33,7 @@ jobs:
           script: |
             # 步骤1：停止旧服务
             echo "停止旧服务..."
-            pkill -f "/home/testapp/myapp" || echo "旧服务未运行"
+            pkill myapp || echo "旧服务未运行"
             sleep 1
 
             # 步骤2：确保目标目录存在（关键）
