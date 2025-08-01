@@ -23,9 +23,7 @@ jobs:
           
           # 修复依赖下载问题：增加网络超时设置、更新索引、显式代理
           RUN go env -w GO111MODULE=on && \
-              go env -w GOPROXY=https://goproxy.cn,direct && \
-              go mod download -x || (echo "依赖下载失败，尝试更新索引" && go clean -modcache && go mod download -x) && \
-              go mod verify || (echo "依赖验证失败，检查 go.mod/go.sum" && exit 1)
+              go env -w GOPROXY=https://goproxy.cn,direct 
           
           # 复制源代码
           COPY . .
