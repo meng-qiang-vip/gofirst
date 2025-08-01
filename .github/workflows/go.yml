@@ -42,8 +42,7 @@ jobs:
               GOOS=linux GOARCH=amd64 \
               CGO_ENABLED=1 \
               CC=gcc \
-              go build -v -x \  # 显示编译细节和依赖包
-              -o myapp main.go && \
+              go build  -o myapp main.go && \
               echo "编译成功，检查可执行文件：" && ls -l myapp
           
           FROM alpine:3.18
