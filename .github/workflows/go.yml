@@ -13,49 +13,49 @@ jobs:
       - name: 构建 Docker 镜像
         run: |
           cat > Dockerfile << 'EOF'
-          # 构建阶段使用 Golang 镜像
           FROM golang:1.22-alpine AS builder
           
           WORKDIR /app
           
-          # 先复制依赖文件（单独复制以利用缓存）
-          COPY go.mod  ./
+          # 先处理依赖（单独复制依赖文件以利用缓存）
+          COPY go.mod ./
           
-          # 修复依赖下载问题：增加网络超时设置、更新索引、显式代理
+          # 配置 GOPROXY 加速依赖下载
           RUN go env -w GO111MODULE=on && \
               go env -w GOPROXY=https://goproxy.cn,direct 
           
           # 复制源代码
           COPY . .
           
-          # 验证主文件存在
-          RUN if [ ! -f "main.go" ]; then echo "错误：main.go 不存在"; exit 1; fi
+          # 显示代码结构和关键文件（辅助排查文件缺失）
+          RUN echo "项目文件结构：" && ls -la && \
+              echo "检查 main.go 是否存在：" && if [ -f "main.go" ]; then echo "存在"; else echo "不存在"; exit 1; fi
           
-          # 安装编译依赖
-          RUN apk add --no-cache gcc musl-dev
+          # 安装完整编译工具链
+          RUN apk add --no-cache gcc musl-dev libc6-compat
           
-          # 编译应用（优化参数）
-          RUN GOOS=linux GOARCH=amd64 \
+          # 编译前显示 Go 环境信息
+          RUN go version && go env
+          
+          # 优化编译命令（增加详细输出，调整链接参数）
+          RUN echo "开始编译..." && \
+              GOOS=linux GOARCH=amd64 \
               CGO_ENABLED=1 \
               CC=gcc \
-              go build -a -installsuffix cgo \
-              -ldflags="-s -w -linkmode external -extldflags '-static -lm -ldl'" \
-              -o myapp main.go
+              go build -v -x \  # 显示编译细节和依赖包
+              -o myapp main.go && \
+              echo "编译成功，检查可执行文件：" && ls -l myapp
           
-          # 构建最终镜像
           FROM alpine:3.18
-          RUN apk add --no-cache ca-certificates tzdata
+          RUN apk add --no-cache ca-certificates tzdata libc6-compat
           WORKDIR /app
           COPY --from=builder /app/myapp .
-          EXPOSE 8054
+          EXPOSE 8084
           CMD ["./myapp"]
           EOF
           
-          # 构建镜像并输出详细日志
+          # 构建时输出详细日志
           docker build -t myapp:latest . --progress=plain
-          
-          docker save -o myapp-image.tar myapp:latest
-          ls -l myapp-image.tar
 
       - name: 停止服务器上的旧容器
         uses: appleboy/ssh-action@v1.0.3
