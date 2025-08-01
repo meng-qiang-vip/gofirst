@@ -1,4 +1,4 @@
-name: 解决GLIBC版本不兼容问题
+name: Docker 容器化部署
 
 on:
   push:
@@ -10,30 +10,58 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 设置Go环境
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.22'
-          cache: false
-
-      - name: 编译Go应用（兼容旧版GLIBC）
+      - name: 构建 Docker 镜像
         run: |
-          # 关键：添加编译参数，降低GLIBC依赖版本
-          GOOS=linux GOARCH=amd64 \
-          CGO_CFLAGS="-D_GLIBCXX_USE_CXX11_ABI=0" \
-          go build -ldflags="-s -w -linkmode external -extldflags '-static'" \
-          -o myapp main.go
+          # 使用与服务器兼容的基础镜像（如 alpine 或特定版本 ubuntu）
+          # 选择与目标服务器系统匹配的基础镜像，解决 GLIBC 问题
+          cat > Dockerfile << 'EOF'
+          # 使用轻量且且兼容性好的 alpine 作为基础镜像
+          FROM golang:1.22-alpine AS builder
           
-          chmod +x myapp
-          # 验证编译结果
-          if [ ! -f "myapp" ]; then
-            echo "编译失败：未生成myapp文件"
-            exit 1
-          fi
-          # 查看编译后的二进制文件依赖的GLIBC版本
-          objdump -T myapp | grep GLIBC_ | sort -u
+          # 设置工作目录
+          WORKDIR /app
+          
+          # 复制源代码
+          COPY . .
+          
+          # 安装编译依赖
+          RUN apk add --no-cache gcc musl-dev
+          
+          # 编译应用（静态链接，确保兼容性）
+          RUN GOOS=linux GOARCH=amd64 \
+              CGO_ENABLED=1 \
+              go build -ldflags="-s -w -linkmode external -extldflags '-static'" \
+              -o myapp main.go
+          
+          # 构建最终镜像（使用更小的基础镜像）
+          FROM alpine:3.18
+          
+          # 安装必要的系统工具
+          RUN apk add --no-cache ca-certificates tzdata
+          
+          # 设置工作目录
+          WORKDIR /app
+          
+          # 从构建阶段复制编译好的应用
+          COPY --from=builder /app/myapp .
+          
+          # 暴露应用端口（根据实际情况修改）
+          EXPOSE 8080
+          
+          # 启动命令
+          CMD ["./myapp"]
+          EOF
+          
+          # 构建镜像
+          docker build -t myapp:latest .
+          
+          # 保存镜像为 tar 文件，便于传输
+          docker save -o myapp-image.tar myapp:latest
+          
+          # 验证文件存在
+          ls -l myapp-image.tar
 
-      - name: 停止服务器上的旧服务
+      - name: 停止服务器上的旧容器
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.TEST_SERVER_HOST }}
@@ -41,23 +69,24 @@ jobs:
           key: ${{ secrets.TEST_SERVER_SSH_KEY }}
           port: ${{ secrets.TEST_SERVER_PORT || 22 }}
           script: |
-            TARGET_DIR="/home/testapp"
-            mkdir -p $TARGET_DIR
-            pkill -f "$TARGET_DIR/myapp" || true
-            sleep 1
+            # 停止并删除旧容器
+            docker stop myapp-container || true
+            docker rm myapp-container || true
+            # 清理旧镜像
+            docker rmi myapp:latest || true
 
-      - name: 传输文件到服务器
+      - name: 传输 Docker 镜像到服务器
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.TEST_SERVER_HOST }}
           username: ${{ secrets.TEST_SERVER_USER }}
           key: ${{ secrets.TEST_SERVER_SSH_KEY }}
           port: ${{ secrets.TEST_SERVER_PORT || 22 }}
-          source: "myapp"
+          source: "myapp-image.tar"
           target: "/home/testapp"
           rm: true
 
-      - name: 启动新服务并验证
+      - name: 在服务器上加载并启动容器
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.TEST_SERVER_HOST }}
@@ -66,20 +95,25 @@ jobs:
           port: ${{ secrets.TEST_SERVER_PORT || 22 }}
           script: |
             TARGET_DIR="/home/testapp"
-            chmod +x $TARGET_DIR/myapp
+            cd $TARGET_DIR
             
-            # 检查服务器GLIBC版本
-            echo "服务器GLIBC版本："
-            ldd --version | head -n 1
+            # 加载镜像
+            docker load -i myapp-image.tar
             
-            # 尝试启动并捕获错误
-            nohup $TARGET_DIR/myapp > $TARGET_DIR/app.log 2>&1 &
+            # 启动新容器
+            docker run -d \
+              --name myapp-container \
+              -p 8054:8054 \  # 端口映射（根据应用实际端口修改）
+              myapp:latest
+            
+            # 验证容器状态
             sleep 2
-            
-            if pgrep -f "$TARGET_DIR/myapp"; then
-              echo "新服务启动成功"
+            if docker ps | grep myapp-container; then
+              echo "容器启动成功"
+              # 查看容器日志
+              docker logs myapp-container
             else
-              echo "启动失败，日志："
-              cat $TARGET_DIR/app.log
+              echo "容器启动失败，查看日志："
+              docker logs myapp-container
               exit 1
             fi
