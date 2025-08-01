@@ -13,7 +13,7 @@ jobs:
       - name: 构建 Docker 镜像
         run: |
           cat > Dockerfile << 'EOF'
-          FROM golang:1.22-alpine AS builder
+          FROM golang:1.24-alpine AS builder
           
           WORKDIR /app
           
@@ -41,7 +41,6 @@ jobs:
           RUN echo "开始编译..." && \
               GOOS=linux GOARCH=amd64 \
               CGO_ENABLED=1 \
-              CC=gcc \
               go build  -o myapp main.go && \
               echo "编译成功，检查可执行文件：" && ls -l myapp
           
