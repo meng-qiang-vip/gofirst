@@ -46,7 +46,7 @@ jobs:
           COPY --from=builder /app/myapp .
           
           # 暴露应用端口（根据实际情况修改）
-          EXPOSE 8080
+          EXPOSE 8054
           
           # 启动命令
           CMD ["./myapp"]
