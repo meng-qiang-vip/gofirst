@@ -55,6 +55,12 @@ jobs:
           # 构建时输出详细日志
           docker build -t myapp:latest . --progress=plain
 
+          # 保存镜像为 tar 文件，便于传输
+          docker save -o myapp-image.tar myapp:latest
+          
+          # 验证文件存在
+          ls -l myapp-image.tar
+
       - name: 停止服务器上的旧容器
         uses: appleboy/ssh-action@v1.0.3
         with:
