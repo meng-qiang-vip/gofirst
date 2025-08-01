@@ -19,7 +19,7 @@ jobs:
           WORKDIR /app
           
           # 先复制依赖文件并下载，利用缓存减少重复下载
-          COPY go.mod go.sum ./
+          COPY go.mod  ./
           RUN go mod download && go mod verify
           
           # 再复制源代码（避免依赖变动时重新编译）
