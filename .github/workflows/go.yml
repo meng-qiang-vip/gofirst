@@ -18,20 +18,25 @@ jobs:
           
           WORKDIR /app
           
-          # 先复制依赖文件并下载，利用缓存减少重复下载
+          # 先复制依赖文件（单独复制以利用缓存）
           COPY go.mod  ./
-          RUN go mod download && go mod verify
           
-          # 再复制源代码（避免依赖变动时重新编译）
+          # 修复依赖下载问题：增加网络超时设置、更新索引、显式代理
+          RUN go env -w GO111MODULE=on && \
+              go env -w GOPROXY=https://goproxy.cn,direct && \
+              go mod download -x || (echo "依赖下载失败，尝试更新索引" && go clean -modcache && go mod download -x) && \
+              go mod verify || (echo "依赖验证失败，检查 go.mod/go.sum" && exit 1)
+          
+          # 复制源代码
           COPY . .
           
           # 验证主文件存在
           RUN if [ ! -f "main.go" ]; then echo "错误：main.go 不存在"; exit 1; fi
           
-          # 安装编译依赖（Alpine 缺少 gcc 等工具）
-          RUN apk add --no-cache gcc musl-dev libc6-compat
+          # 安装编译依赖
+          RUN apk add --no-cache gcc musl-dev
           
-          # 优化编译参数：解决静态链接问题
+          # 编译应用（优化参数）
           RUN GOOS=linux GOARCH=amd64 \
               CGO_ENABLED=1 \
               CC=gcc \
@@ -39,10 +44,7 @@ jobs:
               -ldflags="-s -w -linkmode external -extldflags '-static -lm -ldl'" \
               -o myapp main.go
           
-          # 验证编译结果
-          RUN if [ ! -f "myapp" ]; then echo "错误：编译失败，未生成 myapp"; exit 1; fi
-          
-          # 最终镜像
+          # 构建最终镜像
           FROM alpine:3.18
           RUN apk add --no-cache ca-certificates tzdata
           WORKDIR /app
@@ -51,7 +53,7 @@ jobs:
           CMD ["./myapp"]
           EOF
           
-          # 构建时输出详细日志，便于排查错误
+          # 构建镜像并输出详细日志
           docker build -t myapp:latest . --progress=plain
           
           docker save -o myapp-image.tar myapp:latest
