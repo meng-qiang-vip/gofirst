@@ -48,7 +48,7 @@ jobs:
           RUN apk add --no-cache ca-certificates tzdata libc6-compat
           WORKDIR /app
           COPY --from=builder /app/myapp .
-          EXPOSE 8084
+          EXPOSE 8054
           CMD ["./myapp"]
           EOF
           
@@ -57,9 +57,15 @@ jobs:
 
           # 保存镜像为 tar 文件，便于传输
           docker save -o myapp-image.tar myapp:latest
+
+          # 验证文件存在并检查权限
+          ls -l ./myapp-image.tar
           
-          # 验证文件存在
-          ls -l myapp-image.tar
+          chmod 644 ./myapp-image.tar  # 确保文件可读取
+    
+          # 打包到临时目录（使用当前用户有权限的路径）
+
+          tar -czf /tmp/vUDgSEtLsz.tar.gz ./myapp-image.tar
 
       - name: 停止服务器上的旧容器
         uses: appleboy/ssh-action@v1.0.3
