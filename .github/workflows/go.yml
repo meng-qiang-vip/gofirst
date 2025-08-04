@@ -79,6 +79,9 @@ jobs:
           key: ${{ secrets.TEST_SERVER_SSH_KEY }}
           port: ${{ secrets.TEST_SERVER_PORT || 22 }}
           script: |
+            docker stop myapp-container || true
+            docker rm myapp-container || true
+            docker rmi myapp:latest || true
             TARGET_DIR="/home/testapp"
             # 进入目标目录，停止并删除旧服务
             cd $TARGET_DIR || mkdir -p $TARGET_DIR && cd $TARGET_DIR
