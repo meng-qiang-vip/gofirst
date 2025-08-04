@@ -9,7 +9,7 @@ import (
 // 定义一个处理函数，用于处理 HTTP 请求
 func helloHandler(w http.ResponseWriter, r *http.Request) {
 	// 向客户端返回 "Hello 孟强"
-	fmt.Fprintln(w, "Hello CICD 代码已经更新")
+	fmt.Fprintln(w, "Hello CICD 代码已经使用docker-compose代替")
 }
 
 func main() {
