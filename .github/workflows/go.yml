@@ -1,4 +1,4 @@
-name: Docker 容器化部署
+name: Docker 容器化部署（结合 docker-compose）
 
 on:
   push:
@@ -10,8 +10,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 构建 Docker 镜像
+      - name: 构建 Docker 镜像并准备部署文件
         run: |
+          # 生成 Dockerfile（与之前保持一致）
           cat > Dockerfile << 'EOF'
           FROM golang:1.24-alpine AS builder
           
@@ -52,22 +53,25 @@ jobs:
           CMD ["./myapp"]
           EOF
           
-          # 构建时输出详细日志
+          
+          # 构建镜像   # 构建时输出详细日志
           docker build -t myapp:latest . --progress=plain
 
-          # 保存镜像为 tar 文件，便于传输
-          docker save -o myapp-image.tar myapp:latest
-
-          # 验证文件存在并检查权限
-          ls -l ./myapp-image.tar
           
+          # 保存镜像为 tar 文件
+          docker save -o myapp-image.tar myapp:latest
+          
+          # 验证文件（确保镜像和 docker-compose.yml 存在）
+          ls -l myapp-image.tar
+          ls -l docker-compose.yml  # 检查项目根目录的 docker-compose.yml
+
           chmod 644 ./myapp-image.tar  # 确保文件可读取
     
           # 打包到临时目录（使用当前用户有权限的路径）
 
           tar -czf /tmp/vUDgSEtLsz.tar.gz ./myapp-image.tar
 
-      - name: 停止服务器上的旧容器
+      - name: 停止服务器上的旧服务（通过 docker-compose）
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.TEST_SERVER_HOST }}
@@ -75,22 +79,23 @@ jobs:
           key: ${{ secrets.TEST_SERVER_SSH_KEY }}
           port: ${{ secrets.TEST_SERVER_PORT || 22 }}
           script: |
-            docker stop myapp-container || true
-            docker rm myapp-container || true
-            docker rmi myapp:latest || true
+            TARGET_DIR="/home/testapp"
+            # 进入目标目录，停止并删除旧服务
+            cd $TARGET_DIR || mkdir -p $TARGET_DIR && cd $TARGET_DIR
+            docker-compose down || true  # 若没有旧服务，忽略错误
 
-      - name: 传输 Docker 镜像到服务器
+      - name: 传输镜像和 docker-compose.yml 到服务器
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.TEST_SERVER_HOST }}
           username: ${{ secrets.TEST_SERVER_USER }}
           key: ${{ secrets.TEST_SERVER_SSH_KEY }}
           port: ${{ secrets.TEST_SERVER_PORT || 22 }}
-          source: "myapp-image.tar"
+          source: "myapp-image.tar,docker-compose.yml"  # 同时传输两个文件
           target: "/home/testapp"
           rm: true
 
-      - name: 在服务器上加载并启动容器
+      - name: 在服务器上加载镜像并通过 docker-compose 启动
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.TEST_SERVER_HOST }}
@@ -100,19 +105,20 @@ jobs:
           script: |
             TARGET_DIR="/home/testapp"
             cd $TARGET_DIR
+            
+            # 加载镜像
             docker load -i myapp-image.tar
             
-            docker run -d \
-              --name myapp-container \
-              -p 8054:8054 \
-              myapp:latest
+            # 通过 docker-compose 启动服务
+            docker-compose up -d
             
+            # 验证服务状态
             sleep 2
-            if docker ps | grep myapp-container; then
-              echo "容器启动成功"
-              docker logs myapp-container
+            if docker-compose ps | grep "Up"; then
+              echo "服务启动成功"
+              docker-compose logs myapp  # 查看应用日志
             else
-              echo "容器启动失败，查看日志："
-              docker logs myapp-container
+              echo "服务启动失败，查看日志："
+              docker-compose logs myapp
               exit 1
             fi

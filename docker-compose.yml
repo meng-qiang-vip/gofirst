@@ -1,0 +1,15 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  myapp:
+    image: myapp:latest  # 使用构建的镜像
+    container_name: myapp-container
+    # restart: always  # 自动重启
+    ports:
+      - "8054:8054"  # 端口映射（宿主机:容器内）
+    # 如需环境变量或数据卷，可在此添加
+    # environment:
+    #   - APP_ENV=production
+    # volumes:
+    #   - ./logs:/app/logs
